@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# Source the API key from the secure file
+source ~/.openai_key
+
+# Function to make the API call
+ask_chatgpt() {
+    local question="$*"
+    local api_key="$OPENAI_API_KEY"
+
+    # Check if the API key is set
+    if [ -z "$api_key" ]; then
+        echo "Error: OpenAI API key is not set. Please set the OPENAI_API_KEY environment variable."
+        exit 1
+    fi
+
+    # Define the JSON payload
+    local payload=$(jq -n --arg q "$question" '{model: "gpt-4", messages: [{role: "user", content: $q}]}')
+
+    # Make the API call
+    local response=$(curl -s -X POST https://api.openai.com/v1/chat/completions \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $api_key" \
+        -d "$payload")
+
+    # Check if the curl command was successful
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to make the API call."
+        exit 1
+    fi
+
+    # Check if the response contains an error
+    local has_error=$(echo "$response" | jq -e 'has("error")')
+    if [ "$has_error" == "true" ]; then
+        local error_message=$(echo "$response" | jq -r '.error.message')
+        echo "Error: API call returned an error - $error_message"
+        exit 1
+    fi
+
+    # Extract and print the response content
+    local content=$(echo "$response" | jq -r '.choices[0].message.content')
+    
+    # Ensure content is not empty or false
+    if [ -z "$content" ] || [ "$content" == "false" ]; then
+        echo "Error: Received an invalid response."
+        exit 1
+    fi
+
+    echo "$content"
+}
+
+# Check if a question was provided
+if [ -z "$1" ]; then
+    echo "Usage: $0 your question here"
+    exit 1
+fi
+
+# Ask the question
+ask_chatgpt "$*"
